@@ -1,7 +1,7 @@
 
 # About the project
 
-I believe I heard about this course from the mailing list of the doctoral school. I expect to brush up my knowledge on some of the statistical methods including PCA and factor analysis on this course. I have used R before. This file exists in [my Github repository](https://github.com/your_github_username/IODS-project).
+I believe I heard about this course from the mailing list of the doctoral school. I expect to brush up my knowledge on some of the statistical methods including PCA and factor analysis on this course. I have used R before. This file exists in [my Github repository](https://github.com/tsnorri/IODS-project).
 
 ```{r}
 # This is a so-called "R chunk" where you can write R code.
