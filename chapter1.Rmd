@@ -1,7 +1,7 @@
 
 # About the project
 
-*Write a short description about the course and add a link to your GitHub repository here. This is an R Markdown (.Rmd) file so you should use R Markdown syntax.*
+I believe I heard about this course from the mailing list of the doctoral school. I expect to brush up my knowledge on some of the statistical methods including PCA and factor analysis on this course. I have used R before. This file exists in [my Github repository](https://github.com/your_github_username/IODS-project).
 
 ```{r}
 # This is a so-called "R chunk" where you can write R code.
