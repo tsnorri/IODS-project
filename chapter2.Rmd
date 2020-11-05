@@ -1,6 +1,6 @@
 # Chapter 2
 
-I decided to start with the exercises and read the book if needed. I also decided to use Tidyverse and tidyr as I use them whenever possible when doing something with R. The e1071 library is needed for calculating kurtosis.
+I decided to start with the exercises and read the book if needed. I also decided to use Tidyverse (which includes ggplot2) and tidyr as I use them whenever possible when doing something with R. The e1071 library is needed for calculating kurtosis.
 
 ## Loading the data set
 
