@@ -1,13 +1,124 @@
-# Insert chapter 2 title here
+# Chapter 2
 
-*Describe the work you have done this week and summarize your learning.*
+I decided to start with the exercises and read the book if needed. I also decided to use Tidyverse and tidyr as I use them whenever possible when doing something with R. The e1071 library is needed for calculating kurtosis.
 
-- Describe your work and results clearly. 
-- Assume the reader has an introductory course level understanding of writing and reading R code as well as statistical methods.
-- Assume the reader has no previous knowledge of your data or the more advanced methods you are using.
+## Loading the data set
+
+The data set used seems to contain results for a survey done for an introductory university course on social statistics. The variables are three averages calculated over answers to a subset of the questions each, an “attitude towards statistics” value determined from answers to some questions, as well as the gender, the age of the student and a total score calculated from the questions. According to comments in the original data set, the three derived variables indicate “surface approach” (surf), “strategic approach” (stra) and “deep approach” (deep.)
+
+Below, the data is loaded and gender is transformed to an integer in order to make calculating a correlation matrix possible.
 
 ```{r}
-date()
+library(tidyverse)
+library(tidyr)
+library(e1071)
+
+df2 <- read_tsv("data/learning2014.tsv", col_types = cols(
+  .default = col_double(),
+  gender = col_character(),
+  Age = col_integer(),
+  Attitude = col_integer(),
+  Points = col_integer()
+))
+
+df2 <- df2 %>% mutate(gender_ = recode(gender, M = -1, F = 1))
 ```
 
-Here we go again...
+## Graphical overview of the data
+
+Below are mean, median minimum and maximum values for each of the variables, as well as the counts of students by gender:
+
+```{r}
+df3 <- df2 %>% select(-c(gender, gender_))
+df3 %>% summarise_all(tibble::lst(mean))
+df3 %>% summarise_all(tibble::lst(median))
+df3 %>% summarise_all(tibble::lst(min))
+df3%>% summarise_all(tibble::lst(max))
+
+df2 %>% select(gender) %>% group_by(gender) %>% tally
+```
+
+Below are histograms of the values.
+
+```{r}
+scores_long <- df2 %>% select(c(deep, stra, surf)) %>% gather()
+ggplot(scores_long, aes(x = value, fill = key)) +
+  geom_histogram(position = "dodge") +
+  xlim(1, 5)
+
+ggplot(df2, aes(x = Points)) +
+  geom_histogram()
+
+ggplot(df2, aes(x = Age)) +
+  geom_histogram()
+```
+
+The data look reasonably Gaussian, except for age, which clearly is not. Below the kurtoses of the variables are calculated to given an estimate on the gaussianity.
+
+```{r}
+df2 %>% select(-c(gender, gender_)) %>% summarise_all(tibble::lst(kurtosis)) %>% t
+```
+
+The values for surf and points are close to zero and values for attitude, deep and stra are reasonably close, so the variables seem Gaussian.
+
+Below is a correlation matrix calculated from the variables. The matrix is calculated using R’s built-in implementation for Spearman’s rank correlation coefficient, which I decided to use because some of the variables are discrete.
+
+```{r}
+cor(df2 %>% select(gender_, Age, Attitude, Points, surf, stra, deep), method = "spearman")
+```
+
+From the correlation matrix it can be seen that there is a less-than-moderate positive correlation between attitude and total points. From the value, as well as by plotting the data points with a regression line, it may be seen that the correlation is not significant:
+
+```{r}
+ggplot(df2, aes(x = Attitude, y = Points)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  ggtitle("Total points against attitude score")
+```
+
+There is also a less-than-moderate negative correlation between gender and attitude, which indicates that males may have a more positive attitude to statistics.
+
+```{r}
+df2 %>% group_by(gender) %>% summarise(`Median attitude` = median(Attitude))
+```
+
+Additionally, there is a less-than-moderate negative correlation between surf and deep.
+
+```{r}
+ggplot(df2, aes(x = surf, y = deep)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  ggtitle("surf versus deep")
+```
+
+At this point, I decided to check the Datacamp exercises. Here is a plot with the student’s attitude versus exam points coloured by gender as done in the DataCamp exercise:
+
+```{r}
+ggplot(df2, aes(x = Attitude, y = Points, colour = gender)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  ggtitle("Total points against attitude score")
+```
+
+## Regression model
+
+I could not find a simple way to do this with ggplot, so here is a solution similar to the Datacamp exercirses. I chose attitude, surf and stra as the explanatory variables as they had the highest absolute values for correlation with points.
+
+```{r}
+model <- lm(Points ~ Attitude + surf + stra, data = df2)
+summary(model)
+```
+
+The results indicate (in the Estimate column) that of the three variables, stra has the biggest effect on points. On the other hand, attitude is most likely to have an effect on the points, which may be seen from the probability in the last column. As the probability of getting a t value as high or higher when the null hypothesis of the coefficient being zero is true is low enought only for the attitude, it seems that only attitude from the three variables in question may be used to predict the number of points. In effect, when attitude increases by one unit, the prediction is that points increase by 0.34 units.
+
+## Graphical model validation
+
+In general, a linear regression model assumes that the target variable is a linear combination of the model parameters. Further, it is assumed that the errors are normally distributed and have constant variance.
+
+The generated model assumes that total points are best explained by attitude, surf and stra. In other words, deep would not effect the total score. (The summary of the model indicates, though, that attitude is significant while surf and stra are not.)
+
+```{r}
+plot(model, c(1, 2, 5))
+```
+
+As the residuals shown in the Q-Q plot mostly follow the line, the errors seem to be Gaussian. The residuals vs. fitted plot shows no discernible pattern, which would indicate the errors having constant variance. The residuals vs leverage plot indicates that no single observation has exceptionally high impact on the model, as the leverage value of each observation is relatively small.
