@@ -1,0 +1,209 @@
+# Chapter 3
+
+## Reading the data
+
+I am using the whole Tidyverse again, not just ggplot2 or dplyr, as well as tidyr.
+
+```{r}
+library(tidyverse)
+library(tidyr)
+library(questionr)
+library(boot)
+
+df0 <- read_tsv("data/student_alcohol_use.tsv", col_types = cols(
+  .default = col_character(),
+  age = col_integer(),
+  Medu = col_integer(),
+  Fedu = col_integer(),
+  traveltime = col_integer(),
+  studytime = col_integer(),
+  failures = col_integer(),
+  famrel = col_integer(),
+  freetime = col_integer(),
+  goout = col_integer(),
+  Dalc = col_integer(),
+  Walc = col_integer(),
+  health = col_integer(),
+  absences = col_integer(),
+  G1 = col_integer(),
+  G2 = col_integer(),
+  G3 = col_integer(),
+  alc_use = col_double(),
+  high_use = col_logical()
+))
+```
+
+## Guessing the relationship between alcohol consumption and other variables
+
+I did the Datacamp exercises but forgot what the result was. My guess or recollection of some things that are associated with high alcohol consumption is:
+
+ * Males consume more alcohol than females
+ * Small amount of free time after school; 
+ * No extra-curricular activities
+ * One of the parents staying at home
+
+Below is a summary of the data.
+```{r}
+summary(df0)
+```
+
+Below are histograms of the variables.
+
+```{r}
+ggplot(df0, aes(x = sex, fill = high_use)) + geom_bar() + ggtitle("Sex vs. high alcohol use")
+ggplot(df0, aes(x = freetime, fill = high_use)) + geom_bar() + ggtitle("Histogram for freetime with high alcohol use")
+ggplot(df0, aes(x = activities, fill = high_use)) + geom_bar() + ggtitle("Extra-curricular activities vs. high alcohol use")
+```
+
+Please see below for a plot for the parents’ jobs vs. high alcohol use.
+
+## Exploring the relationships of the variables
+
+I decided to transform the variables to numeric and calculate a correlation matrix. Here, binary variables are transformed to {-1, 1}. Other categorical measurements are transformed to (at least) ordinal if possible.
+
+The variables Mjob, Fjob, reason and guardian are categorical and difficult to transform, so I plotted them instead.
+
+```{r}
+
+df1 <- df0 %>% mutate(
+    high_use_ = Vectorize(function(val) { if (val) return (1) else { return (-1) }})(high_use)
+  )
+
+df2 <- df1 %>% mutate(
+    school_ = recode(school, GP = -1, MS = 1),
+    sex_ = recode(sex, M = -1, F = 1),
+    address_ = recode(address, U = -1, R = 1),
+    famsize_ = recode(famsize, LE3 = -1, GT3 = 1),
+    Pstatus_ = recode(Pstatus, T = -1, A = 1),
+    m_at_home = recode(Mjob, at_home = 1, .default = -1),
+    f_at_home = recode(Fjob, at_home = 1, .default = -1),
+    schoolsup_ = recode(schoolsup, yes = 1, no = -1),
+    famsup_ = recode(famsup, yes = 1, no = -1),
+    paid_ = recode(paid, yes = 1, no = -1),
+    activities_ = recode(activities, yes = 1, no = -1),
+    nursery_ = recode(nursery, yes = 1, no = -1),
+    higher_ = recode(higher, yes = 1, no = -1),
+    internet_ = recode(internet, yes = 1, no = -1),
+    romantic_ = recode(romantic, yes = 1, no = -1)
+  ) %>%
+  select(-c(
+    school,
+    sex,
+    address,
+    famsize,
+    Pstatus,
+    Mjob,
+    Fjob,
+    reason,
+    guardian,
+    schoolsup,
+    famsup,
+    paid,
+    activities,
+    nursery,
+    higher,
+    internet,
+    romantic
+  ))
+cor(
+  x = df2 %>% select(-c(high_use, high_use_)),
+  y = df2 %>% select(high_use_),
+  method = "spearman"
+)
+
+df3 <- df1 %>% select(high_use, Mjob, Fjob) %>% gather(key, value, -c(high_use))
+ggplot(df3, aes(x = value, y = key, colour = high_use)) + geom_jitter(alpha = 0.5)
+```
+
+The figure does not seem to be very telling.
+Here, frequencies for high alcohol use are counted for Mjob and Fjob.
+
+```{r}
+df1 %>% select(high_use, Mjob) %>% count(high_use, Mjob) %>% group_by(Mjob) %>% mutate(prop = prop.table(n))
+df1 %>% select(high_use, Fjob) %>% count(high_use, Fjob) %>% group_by(Fjob) %>% mutate(prop = prop.table(n))
+```
+
+Below, frequencies are calculated for reason and guardian, too.
+
+```{r}
+df1 %>% select(high_use, reason) %>% count(high_use, reason) %>% group_by(reason) %>% mutate(prop = prop.table(n))
+df1 %>% select(high_use, guardian) %>% count(high_use, guardian) %>% group_by(guardian) %>% mutate(prop = prop.table(n))
+```
+
+Somehow there seems to be a possible connection between choosing the school for “other” reasons and high alcohol use. Below the correlation is calculated to make comparing easier.
+
+```{r}
+cor(
+  x = df1 %>% select(high_use_),
+  y = df1 %>% select(reason) %>% mutate(reason = recode(reason, other = 1, .default = -1)),
+  method = "spearman"
+)
+```
+
+The correlation is negligible.
+
+To conclude, there are correlations between high alcohol use and the following:
+
+ * Positive with goout
+ * Positive with being male
+ * Negative with studytime
+
+Even these are rather weak, though. Of the variables I guessed, only sex had a connection with high alcohol use according to the correlation coefficient.
+
+## Logistic regression
+
+The way I read the exercise I am supposed to keep using the same variables that I guessed.
+
+Here is the model:
+
+```{r}
+df4 <- df0 %>% mutate(
+    m_at_home = recode(Mjob, at_home = TRUE, .default = FALSE),
+    f_at_home = recode(Fjob, at_home = TRUE, .default = FALSE),
+    activities = Vectorize(function(val) { if ("yes" == val) return (TRUE) else { return (FALSE) }})(activities)
+  ) %>%
+  mutate(
+    either_at_home = m_at_home | f_at_home
+  )
+
+m <- glm(high_use ~ sex + freetime + activities + either_at_home, data = df4, family = "binomial")
+summary(m)
+odds.ratio(m, level = 0.95)
+```
+
+The model does not look convincing at all (only the student being male seems significant). Furthermore, the confidence intervals of the odds ratios of all the other variables contain the value one, which suggests that they are independent from high alcohol use. To fix this, I chose to use sex and study time as explaining variables.
+
+```{r}
+m1 <- glm(high_use ~ sex + studytime, data = df4, family = "binomial")
+summary(m1)
+odds.ratio(m1, level = 0.95)
+```
+
+The summary indicates that the student being male increases the log odds of high alcohol use by approximately 1.28. Each unit increase in study time decreases the log odds of high alcohol use by approximately 0.5. The p values (in the last column) indicate that the former is significant and the latter is somewhat significant. Additionally the confidence intervals of the odds ratios of both of the variables do not contain the value one and hence the variables may be connected to high alcohol use.
+
+Below the predictive power of the model is tested.
+
+```{r}
+probabilities <- predict(m1, type = "response")
+df4 <- df4 %>%
+  mutate(probability = probabilities) %>%
+  mutate(prediction = (0.5 < probability))
+
+table(high_use = df4$high_use, prediction = df4$prediction)
+```
+
+For some reason the model did not work at all; its performance was equivalent to guessing that no one of the students is classified as using much alcohol. The training error is 75 / 382 ≈ 0.196.
+
+Below 10-fold cross-validation is tested.
+
+```{r}
+loss_func <- function(class, prob) {
+  n_wrong <- abs(class - prob) > 0.5
+  mean(n_wrong)
+}
+
+cv <- cv.glm(data = df4, cost = loss_func, glmfit = m1, K = 10)
+cv$delta
+```
+
+On one hand the prediction error is in fact lower than in Datacamp’s model. On the other hand, the usefulness of either such a model (or both) or the metric seems questionable because by guessing one can seemingly get a better result.
