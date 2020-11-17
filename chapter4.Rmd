@@ -1,0 +1,182 @@
+# Chapter 4
+
+## Loading the Data
+
+Below the Boston data is loaded. The data set contains various statistics from some 30 years ago including per capita crime rate by town, nitrogen oxides concentration (parts per 10 million) and pupil-teacher ratio by town. The variables seem continuous, so I used the Pearson correlation coefficient.
+
+```{r}
+library(MASS)
+library(corrplot)
+library(e1071)
+library(tidyverse) # Load last in order to use dplyr::select by default.
+library(GGally)
+library(plotly)
+data("Boston")
+
+summary(Boston)
+
+corrplot.mixed(cor(Boston), tl.pos = "d", tl.col = "black", tl.cex = 0.6, number.cex = 0.6)
+```
+
+Some correlations may be seen, including:
+
+ * strong positive for accessibility to radial highways (rad) and full-value property-tax rate per $10,000 (tax)
+ * fairly strong positive for nitrogen oxides concentration, parts per 10 million (nox) and proportion of non-retail business acres per town (indus)
+ * fairly strong negative for nitrogen oxides concentration, parts per 10 million (nox) and weighted mean of distances to five Boston employment centres (dis)
+
+Below the kurtoses of the variables are calculated to determine whether they are Gaussian.
+
+```{r}
+Boston %>% summarise_all(tibble::lst(kurtosis)) %>% t
+```
+
+From the values, it may be seen that some of the values are too peaked to be Gaussian, including per capita crime rate by town (crim) and the ethnicity of the inhabitants (black). Some, on the other hand, are too flat, including proportion of non-retail business acres per town (indus) and value property-tax rate per $10,000 (tax).
+
+Below the data is standardised like in the DataCamp exercise. After scaling the mean of each variable is zero. The crime rate is also converted to a categorical variable.
+
+```{r}
+boston_ <- Boston %>% scale %>% data.frame %>% tibble
+crime_bins <- quantile(boston_$crim)
+crime <- cut(boston_$crim, breaks = crime_bins, include.lowest = TRUE, label = c("low", "med_low", "med_high", "high"))
+boston_$crim = crime
+```
+
+## Linear Discriminant Analysis
+
+Below, training and test data sets are created by selecting 80% of the data by random to the former.
+
+```{r}
+n <- nrow(boston_)
+idxs <- sample(n, size = n * 0.8)
+training <- boston_[idxs,]
+testing <- boston_[-idxs,]
+```
+
+Next, linear discriminant analysis is done.
+
+```{r}
+model <- lda(crim ~ ., data = training)
+classes <- as.numeric(training$crim)
+plot(model, dimen = 2, col = classes, pch = classes)
+```
+
+Below, the model is used to predict the crime rates in the testing data set.
+
+```{r}
+actual_classes <- testing$crim
+testing <- testing %>% select(-crim)
+prediction <- predict(model, newdata = testing)
+table(correct = actual_classes, predicted = prediction$class)
+```
+
+By looking at the cross tabulation it seems that the model can predict crime rates quite well.
+
+## Clustering
+
+Below, the Euclidean distance matrix is calculated and clustering is done. R’s implementation of K-means seems to calculate the distances by itself, so there is not much use for the precalculated distances in this case.
+
+```{r, fig.width = 10, fig.height = 10}
+boston_ <- Boston %>% scale %>% data.frame %>% tibble
+dist_mat <- dist(boston_)
+summary(dist_mat)
+km1 <- kmeans(boston_, centers = 4)
+
+do_plot <- function (data, km) {
+  ggpairs(
+  	data,
+  	mapping = ggplot2::aes(colour = as.factor(km$cluster)),
+  	upper = list(continuous = wrap("cor", size = 2.0)),
+  	lower = list(continuous = wrap("points", alpha = 0.3, size = 0.3)),
+  	diag = list(continuous = wrap("densityDiag", size = 0.3)),
+  	combo = wrap("dot", alpha = 0.4, size = 0.4)
+  ) +
+  theme(
+  	axis.text.x = element_text(size = 6),
+  	axis.text.y = element_text(size = 6),
+  	axis.ticks = element_line(colour = "black", size = 0.3),
+  	text = element_text(size = 10)
+  )
+}
+
+do_plot(boston_, km1)
+```
+
+Just by looking at the plots it seems that there are four discernible clusters in none of the cases. (I think dimensionality reduction might be a good idea.) Below the WCSS is calculated to determine a good number of clusters.
+
+```{r}
+set.seed(43)
+max_clusters <- 10
+twcss <- sapply(1:max_clusters, function(k) { kmeans(boston_, centers = k)$tot.withinss})
+df1 <- cbind(1:max_clusters, twcss) %>% as.data.frame %>% tibble
+colnames(df1) <- c("Clusters", "TWCSS")
+ggplot(df1, aes(x = Clusters, y = TWCSS)) + geom_line() + geom_point() + scale_x_continuous(breaks = 1:max_clusters)
+```
+
+Based on the WCSS it seems that two clusters would be the best choice.
+
+```{r, fig.width = 10, fig.height = 10}
+km2 <- kmeans(boston_, centers = 2)
+do_plot(boston_, km2)
+```
+
+## K-means with LDA
+
+The data set was already standardised for clustering. Below, k-means is run with three clusters and LDA is used to generate a model. The original function for drawing the arrows for the LDA is from [a Stack Overflow answer](https://stackoverflow.com/a/17240647/856976).
+
+```{r, fig.width = 10, fig.height = 10}
+km3 <- kmeans(boston_, centers = 3)
+boston__ <- boston_ %>% mutate(Cluster = km3$cluster)
+model2 <- lda(Cluster ~ ., data = boston__)
+
+lda.arrows <- function(x, x0, y0, myscale = 1, tex = 0.75, choices = c(1,2), ...){
+  ## adds `biplot` arrows to an lda using the discriminant function values
+  heads <- coef(x)
+  arrows(x0 = x0, y0 = y0, 
+         x1 = myscale * (x0 + heads[,choices[1]]), 
+         y1 = myscale * (y0 + heads[,choices[2]]), ...)
+  text(x = myscale * (x0 + heads[,choices[1]]), y = myscale * (y0 + heads[,choices[2]]), labels = row.names(heads), 
+    cex = tex)
+}
+
+plot(model2, dimen = 2, col = boston__$Cluster, pch = boston__$Cluster)
+lda.arrows(model2, x0 = rep(1:5 - 2, 3)[1:14], y0 = rep(0:2, 5)[1:14], myscale = 1, length = 0.1)
+```
+
+Based on the plots it seems that the following are (some of) the most influencial linear separators for the clusters:
+
+ * index of accessibility to radial highways (rad)
+ * full-value property-tax rate per $10,000 (tax)
+ * proportion of owner-occupied units built prior to 1940 (age)
+ * proportion of residential land zoned for lots over 25,000 sq.ft. (zn)
+
+## 3D Plots for Crime Rate
+
+In the two R sections below is the code from the exercise (slightly modified), as well as the plots. I assume the same model predictors are supposed to be used with k-means. To determine a suitable k, I calculated TWCSS again.
+
+```{r}
+model_predictors <- dplyr::select(training, -crim)
+
+max_clusters <- 6
+twcss2 <- sapply(1:max_clusters, function(k) { kmeans(model_predictors, centers = k)$tot.withinss})
+df2 <- cbind(1:max_clusters, twcss2) %>% as.data.frame %>% tibble
+colnames(df2) <- c("Clusters", "TWCSS")
+ggplot(df2, aes(x = Clusters, y = TWCSS)) + geom_line() + geom_point() + scale_x_continuous(breaks = 1:max_clusters)
+```
+
+Removing crime rate did not seem to notably affect TWCSS. Since there are four levels of crime, I used four centers for k-means.
+
+```{r}
+# Check the dimensions
+dim(model_predictors)
+dim(model$scaling)
+# Matrix multiplication
+matrix_product <- as.matrix(model_predictors) %*% model$scaling
+matrix_product <- as.data.frame(matrix_product)
+
+km4 <- kmeans(model_predictors, centers = 4)
+
+plot_ly(x = matrix_product$LD1, y = matrix_product$LD2, z = matrix_product$LD3, type = 'scatter3d', mode = 'markers', size = 0.3, alpha = 0.3, color = training$crim)
+plot_ly(x = matrix_product$LD1, y = matrix_product$LD2, z = matrix_product$LD3, type = 'scatter3d', mode = 'markers', size = 0.3, alpha = 0.3, color = as.factor(km4$cluster))
+```
+
+In this dimensionality reduction, there is one clearly separate cluster around the point x = 7, y = 0, z = 0. This was better separated in the first plot. K-means found some of the points in the larger cluster to be closer to those in the previously mentioned cluster. In both plots the larger cluster seems to consist of three parts the shapes of which seem to match.
