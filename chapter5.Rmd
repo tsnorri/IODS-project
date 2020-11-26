@@ -1,0 +1,95 @@
+# Chapter 5
+
+## Loading the Data and Graphical Overview
+
+I saved the data in an rds file. Below, the data is loaded and the name of one variable clarified.
+
+```{r, fig.width = 10, fig.height = 10}
+library(tidyverse)
+library(GGally)
+library(e1071)
+human <- read_rds("data/human.rds")
+ggpairs(
+  human,
+  upper = list(continuous = wrap("cor", size = 3.0)),
+  lower = list(continuous = wrap("points", alpha = 0.3, size = 0.3)),
+  diag = list(continuous = wrap("densityDiag", size = 0.3)),
+  combo = wrap("dot", alpha = 0.4, size = 0.4)
+) +
+theme(
+  axis.text.x = element_text(size = 6),
+  axis.text.y = element_text(size = 6),
+  axis.ticks = element_line(colour = "black", size = 0.3),
+  text = element_text(size = 7)
+)
+```
+
+Some of the strong correlations include:
+
+ * Negative between life expetancy at birth and maternal mortality ratio
+ * Positive between life expetancy at birth and expected years of education
+ * Positive between adolescent birth rate and maternal mortality ratio
+
+Below the kurtoses of the variables are calculated to determine whether they are Gaussian.
+
+```{r}
+human %>% summarise_all(tibble::lst(kurtosis)) %>% t
+```
+
+Especially GNI and maternal mortality ratio are too peaked to be Gaussian.
+
+## Principal Component Analysis
+
+Below the PCA is done on non-standardised data.
+
+```{r, fig.width = 10, fig.height = 10}
+pca1 <- prcomp(human)
+biplot(pca1, choices = 1:2, cex = c(0.5, 0.8), main = "PCA done without scaling the data first")
+```
+
+Below, the standardisation is done first.
+
+```{r, fig.width = 10, fig.height = 10}
+pca2 <- prcomp(scale(human))
+biplot(pca2, choices = 1:2, cex = c(0.5, 0.8), main = "PCA done after scaling the data")
+```
+
+The variable names are self-explanatory. The partially obfuscated variable names on the left are Expected_Years_of_Education, GNI per capita, Secondary education ratio F/M, and Life_Expectancy_at_Birth.
+
+Since principal components are linear combinations that contain as much of the variance of the input data as possible, not scaling the variables can lead to some variables with naturally broad scales dominating. The second set of results is in that sense more accurate.
+
+According to the plot, the first principal component consists of the following variables:
+
+ * Expected years of education
+ * GNI per capita
+ * Secondary education ratio
+ * Life expectancy at birth
+ * Maternal mortality ratio
+ * Adolescent birth rate
+
+The first four are positively correlated with each other, as are the latter two. Variables in one of the groups are negatively correlated with variables in another. The second principal component consists of labour force participation ratio F/M and percent representation in parliament F.
+
+## Multiple Correspondence Analysis
+
+Below the tea data is loaded from FactoMineR. A summary of the variables is also shown.
+
+```{r}
+library(FactoMineR)
+data(tea)
+str(tea)
+summary(tea)
+```
+
+I decided to keep the first 18 variables for MCA. I marked age as a supplementary variable since it is not a factor.
+
+```{r, fig.width = 10, fig.height = 10}
+mca <- MCA(tea[, 1:18], graph = FALSE)
+plot(mca, invisible = c("ind"), habillage = "quali")
+```
+
+Since the plot shows similar variables together, some observations about the factors may be made:
+
+ * Green tea is similar to dinner
+ * Upscale (w.r.t. price) unpackaged tea is similar to tea room
+ * Private label and branded tea (w.r.t. price) is similar to tea bag and chain store
+ * Earl Grey is similar to milk
