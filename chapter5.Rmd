@@ -93,3 +93,5 @@ Since the plot shows similar variables together, some observations about the fac
  * Upscale (w.r.t. price) unpackaged tea is similar to tea room
  * Private label and branded tea (w.r.t. price) is similar to tea bag and chain store
  * Earl Grey is similar to milk
+
+The similarity can indicate that e.g. milk is added more often to Earl Grey than other tea blends.
