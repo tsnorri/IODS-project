@@ -32,8 +32,41 @@ gii <- gii %>% mutate(
 # Join.
 human <- inner_join(hd, gii, by = c("Country"))
 
+# Convert the GNI column to numeric.
+human$Gross_National_Income_GNI_per_Capita <- sub(",", "", human$Gross_National_Income_GNI_per_Capita) %>% as.numeric
+
 human
 # A tibble: 195 x 19
 
 # Output the data.
-write_tsv(human, "human.tsv")
+#write_tsv(human, "human.tsv")
+
+# Since I am using Tidyverse’s data handling functions, GNI is already numeric.
+
+# The variable names in the lined meta file are not at all descriptive. I hope these were the correct ones.
+# Entries for regions are also removed below, and row names assigned.
+human_ <- human %>%
+	rename(Percent_Representation_in_Parliament_F = Percent_Representation_in_Parliament) %>%
+	select(
+		Country,
+		`Secondary education ratio F/M`,
+		`Labour force participation ratio F/M`,
+		`Expected_Years_of_Education`,
+		`Life_Expectancy_at_Birth`,
+		`Gross_National_Income_GNI_per_Capita`,
+		`Maternal_Mortality_Ratio`,
+		`Adolescent_Birth_Rate`,
+		`Percent_Representation_in_Parliament_F`
+	) %>% drop_na %>%
+	filter(! Country %in% c(
+		"Arab States",
+		"East Asia and the Pacific",
+		"Europe and Central Asia",
+		"Latin America and the Caribbean",
+		"South Asia",
+		"Sub-Saharan Africa",
+		"World"
+	)) %>% column_to_rownames(var = "Country")
+
+# Output as an R object file.
+write_rds(human_, "human.rds")
