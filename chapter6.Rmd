@@ -1,0 +1,172 @@
+# Chapter 6
+
+## Loading the Data
+
+As part of the data wrangling exercise, I saved the modified data in rds format. Below the files are loaded. For the rat data set, the weight was stored in the value column, so it is also renamed.
+
+```{r}
+library(tidyverse)
+library(lme4)
+
+bprs <- read_rds("data/bprs.rds")
+rats <- read_rds("data/rats.rds") %>% mutate(Weight = value)
+```
+
+## MABS Chapter 8 Analyses
+
+Since plotting the individuals by treatment produced a rather incomprehensible plot in the Datacamp exercise, I decided to begin with generating the summary plots. Unlike in the DataCamp exercises, I will use the number of observations in each group in the denominator for calculating standard error. (Please see [a relevant forum discussion](https://mooc.helsinki.fi/mod/forum/discuss.php?d=22000) for details.)
+
+```{r}
+rats_ <- rats %>%
+  group_by(Day, Group) %>%
+  summarise(mean = mean(Weight), se = sd(Weight) / sqrt(n())) %>%
+  ungroup()
+
+ggplot(rats_, aes(x = Day, y = mean, linetype = Group, shape = Group, ymin = mean - se, ymax = mean + se)) +
+  geom_line() +
+  geom_point(size = 3) + 
+  geom_errorbar(linetype = 1) +
+  scale_shape_manual(values = c(1, 2, 4)) +
+  ylab("mean(weight) ± se(weight)") +
+  ggtitle("Weights of the rats by group")
+```
+
+Weights in group 3 seem to be rather small compared to the two others. Variance in that group is also very small. In group 2, on the other hand, there seems to be a lot of variance, and it might be that there are also some outliers.
+
+Below is the box plot.
+
+```{r, fig.width = 10, fig.height = 10}
+ggplot(rats, aes(x = Day, y = Weight, fill = Group, group = interaction(Day, Group))) +
+  geom_boxplot(outlier.alpha = 0.9, outlier.size = 0.7, outlier.shape = 21, size = 0.3)
+```
+
+Some individuals in group 2 (the outliers) seem to weigh quite a lot compared to everyone else. There are also outliers in group 1, who were not very clearly visible in the previous plot just by looking at the standard error values.
+
+As suggested in the book, I am using the mean weight as a summary measure. To satisfy the requirement of having equal time intervals between observations, I will remove the data for day 44. The DataCamp exercise suggests that removing a baseline observation is a good idea, so I will do that, too.
+
+```{r}
+rats_mean <- rats %>%
+  filter(! (Day %in% c(1, 44))) %>%
+  group_by(ID, Group) %>%
+  summarise(Mean = mean(Weight)) %>%
+  ungroup()
+
+ggplot(rats_mean, aes(x = Group, y = Mean)) +
+    geom_boxplot(outlier.alpha = 1.0) +
+    stat_summary(fun = "mean", geom = "point", shape = 23, size = 2, fill = "white")
+```
+
+As suggested in the book, outliers might bias the conclusions from further comparisons of the groups. I looked for the outliers by using various values for weight as a threshold and filtering by that value and the group. I determined their IDs to be 2, 12 and 13. Below, they are removed from the data and the previous plot is redrawn.
+
+```{r}
+rats_outliers_removed <- rats %>% filter(! (ID %in% c(2, 12, 13)))
+
+rats_mean_2 <- rats_outliers_removed %>%
+  filter(! (Day %in% c(1, 44))) %>%
+  group_by(ID, Group) %>%
+  summarise(Mean = mean(Weight)) %>%
+  ungroup()
+
+ggplot(rats_mean_2, aes(x = Group, y = Mean)) +
+    geom_boxplot(outlier.alpha = 1.0) +
+    stat_summary(fun = "mean", geom = "point", shape = 23, size = 2, fill = "white")
+```
+
+The groups look quite different but I will do a test anyway. Since there are three groups (instead of exactly two) I will use variance analysis. Before that, I will check if there is evidence that the variances of the three groups differ by using Bartlett’s test with significance level of 0.05.
+
+```{r}
+bartlett.test(Mean ~ Group, data = rats_mean_2)
+```
+
+Since the p-value is not less than the significance level, the null hypothesis that the variances are equal in all groups cannot be rejected. Next, I will use ANOVA with significance level of 0.05.
+
+```{r}
+lm1 <- lm(Mean ~ Group, data = rats_mean_2)
+anova(lm1)
+```
+
+The F value (variance between groups divided by variance within groups) is rather large. The null hypothesis that the means of groups would not be differnet can be rejected, since the p-value is below the chosen significance level.
+
+The next step is to incorporate the pre-experiment weights and create a new linear model using them as an explaining variable.
+
+```{r}
+rats_mean_with_baseline <- inner_join(
+  rats %>% filter(1 == Day) %>% select(ID, `Starting Weight` = Weight),
+  rats_mean_2,
+  by = c("ID")
+)
+
+lm2 <- lm(Mean ~`Starting Weight` + Group, data = rats_mean_with_baseline)
+anova(lm2)
+```
+
+From the F and p-values it can be seen that both the starting weight and the group number explain the mean weight during the experiment. On the other hand, this is not very surprising, since by checking the first figure it seems that the most of the rats in a given group had similar initial weight. Here the correlation is calculated:
+
+```{r}
+rats__ <- rats %>% filter(1 == Day) %>% select(Group, Weight)
+cor(rats__$Group %>% as.numeric, rats__$Weight, method = "spearman")
+```
+
+As there were no missing individuals except for the outliers, there are no more applicable analyses in Chapter 8.
+
+## MABS Chapter 9 Analyses
+
+I will begin by plotting the BPRS values for each patient. The result is rather unintelligible, as expected. The subject variable is not a unique identifier for a patient (unless each patient received both treatments, which would seem to defeat the purpose of the study). Hence, interaction() is needed.
+
+```{r}
+bprs_ <- bprs %>% mutate(subject_ = interaction(subject, treatment))
+ggplot(bprs_, aes(x = week, group = subject_, y = value, colour = treatment)) +
+  geom_line() +
+  ggtitle("BPRS measurements for each patient")
+```
+
+To clarify things, I will try a box plot.
+
+```{r}
+ggplot(bprs_, aes(x = week, y = value, fill = treatment, group = interaction(week, treatment))) +
+  geom_boxplot()
+```
+
+Below a linear model similar to what is done in the book is created. Since there are two treatment groups, t-test can be used.
+
+```{r}
+lm3 <- lm(formula = value ~ treatment + week, data = bprs_)
+summary(lm3)
+```
+
+From the p-value it may be seen that treatment does not explain the BPRS value very well. In any case, the assumptions of the model are not satisfied, since the observations being independent from each other is highly unlikely.
+
+Below a random intercept model is created.
+
+```{r}
+rim1 <- lmer(value ~ treatment + week + (1 | subject_), data = bprs_, REML = FALSE)
+summary(rim1)
+```
+
+In this model, the subject_ variable seems to have a rather large variance. My guess is that this could be a result of the different backgrounds of the patients. The variance of the residuals is smaller but still seems quite large.
+
+In this model, the variance of the residuals is rather large compared to that of the subjects (similar to the example in the book, although the difference is much smaller). The standard error of treatment2 seemed to grow, which would seem to indicate that the effect of the treatment is uncertain.
+
+Below a random intercept and random slope model is created.
+
+```{r}
+rim2 <- lmer(value ~ treatment + week + (week | subject_), data = bprs_, REML = FALSE)
+summary(rim2)
+```
+
+Adding the random slope seemed to increase the variance of the subject. Below the analysis of variance tables of the two models are calculated.
+
+```{r}
+anova(rim1, rim2)
+```
+
+Since the test yielded a p-value (much) smaller than the significance level of my choice, 0.05, the random intercept and random slope model is better at capturing the data.
+
+Finally, below is a plot of the fitted values.
+
+```{r}
+bprs__ <- bprs_ %>% mutate(fitted = fitted(rim2))
+ggplot(bprs__, aes(x = week, group = subject_, y = fitted, colour = treatment)) +
+  geom_line() +
+  ggtitle("Fitted BPRS values for each patient")
+```
