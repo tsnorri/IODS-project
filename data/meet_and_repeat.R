@@ -33,7 +33,7 @@ rats_ <- rats %>%
 	gather(key = "Day", value = "value", -c(ID, Group)) %>%
 	mutate(Day = as.integer(substring(Day, 3)))
 
-# The long form data has one observation per row whereas wid form data has one observation per column on a given row.
+# The long form data has one observation per row whereas wide form data has one observation per column on a given row.
 # (I fail to see why understanding this difference is emphasised so much in the exercise text. Perhaps the text
 # refers to some other difference.)
 # Some of the same summaries as before can be calculated with the long form data like so:
