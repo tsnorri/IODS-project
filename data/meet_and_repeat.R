@@ -16,7 +16,7 @@ rats <- read_delim(
 	col_names = c("ID_text", "ID", "Group", "WD1", "WD8", "WD15", "WD22", "WD29", "WD36", "WD43", "WD44", "WD50", "WD57", "WD64")
 ) %>% select(-ID_text)
 
-# Check the structure ofq the data.
+# Check the structure of the data.
 str(bprs)
 bprs
 summary(bprs)
